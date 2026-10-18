@@ -1,0 +1,477 @@
+\documentclass{article}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{float}
+\usepackage{booktabs}
+
+\begin{document}
+	
+	\section{Abstract}
+	
+	This thesis investigates whether an artificial neural network can accurately and efficiently price vanilla European call options under the Merton Jump Diffusion (MJD) model. The MJD model extends the classical Black-Scholes framework by incorporating discontinuous jumps into the dynamics of the underlying asset, allowing for a more flexible representation of sudden price movements.\\The theoretical part of the thesis introduces the Black-Scholes model and its underlying assumptions before extending the framework to Merton's Jump Diffusion model. Since the resulting option pricing problem is more computationally demanding, Monte Carlo simulation is used as a numerical reference method. Based on a large dataset of synthetically generated MJD option parameters and corresponding prices, a multilayer perceptron is trained to approximate the pricing function.\\The trained neural network is evaluated on previously unseen parameter combinations and compared with Monte Carlo simulation in terms of pricing accuracy and computational performance. The analysis examines how closely the neural network approximates the reference prices and how its evaluation time compares with the simulation-based approach.\\The results show whether a neural network can serve as a practical approximation method for MJD vanilla call option pricing and illustrate the trade-off between the computational cost of training and the speed and accuracy of subsequent option price evaluations.\\
+	
+	\section{Preface}
+	
+	The initial idea for this thesis arose from an informal debate about whether neural networks can effectively serve as surrogate models for computationally demanding mathematical models. In particular, the discussion focused on whether a neural network could learn a complex option pricing function and subsequently provide accurate and significantly faster evaluations.\\As I have a particular interest in mathematics, computer science, and machine learning, I found this question especially interesting. I therefore decided to investigate it in the context of the Merton Jump Diffusion (MJD) model, which provides a suitable example of a more complex financial model for which option prices can be obtained through numerical methods. During the development of the thesis, I also came across other models that I found particularly interesting, such as the Bates model, the Kou model, and the Variance Gamma model. However, investigating these models in addition to the Merton Jump Diffusion model would have gone beyond the scope of this thesis.\\The theoretical foundations of this thesis were primarily developed using two main sources. M. S. Joshi's \textit{The Concepts and Practice of Mathematical Finance} provided the main theoretical background in mathematical finance and option pricing, while Ian Goodfellow, Yoshua Bengio, and Aaron Courville's \textit{Deep Learning} served as an important source for the theoretical foundations of neural networks and machine learning. In addition, Joachim Steinwendner and Roland Schwaiger's \textit{Neuronale Netze programmieren mit Python} was used as a supplementary practical reference, particularly during the initial setup of the development environment.\\
+	
+	\section{Acknowledgments}
+	
+	I would like to thank my mentor, Martin Bach, for his guidance throughout the development of this thesis, particularly for his feedback on formal aspects. Furthermore, I would like to thank my parents and my brother for reminding me to keep working on the project, even when I did not feel like it. Finally, I would like to thank Valeriia Rabaieva for her emotional support and encouragement, especially during the more demanding phases of the project.
+	
+	\section{Introduction}
+	
+	Financial markets are influenced by a wide range of factors, making the valuation of financial derivatives a challenging mathematical problem. One of the most important examples of such derivatives is the European call option, whose value depends on several parameters describing both the option and the underlying. Mathematical models can be used to estimate this value and provide a theoretical framework for understanding and pricing options.\\A fundamental model for option pricing is the Black-Scholes model. It provides an elegant analytical solution for European vanilla options under a number of simplifying assumptions. One of these assumptions is that the price of the underlying asset follows a continuous diffusion prices. In reality, however, financial markets can experience sudden and discontinuous price movements, for example as a result of unexpected economic or political events. Models that incorporate such jumps can therefore provide a more flexible description of asset price dynamics.\\The Merton Jump Diffusion model extends the Black-Scholes framework by introducing random jumps into the price process of the underlying. this additional component makes the model more flexible, but also increases the computational complexity of option pricing. While options prices can still be obtained using analytical or numerical methods, repeated evaluations can become computationally expensive, particularly when a large number of different parameter combinations has to be considered.\\This raises the question of whether a neural network can learn the relationship between the parameters of the Merton Jump Diffusion model and the corresponding option prices. Once trained, such a network could potentially approximate this pricing function without having to perform a full numerical simulation for every new option. The central question of this thesis is therefore:\begin{quote} To what extent can a neural network accurately and efficiently price vanilla European call options under the Merton Jump Diffusion model compared with Monte Carlo simulation?\end{quote}To investigate this question, the Black-Scholes model is first introduced as the theoretical foundation for the subsequent models. The Merton Jump Diffusion model is then presented as an extension that incorporates discontinuous jumps. Monte Carlo simulation is used to obtain numerical reference prices, which are subsequently used to generate a dataset for training a multilayer perceptron. The trained neural network is then evaluated on previously unseen parameter combinations and compared with Monte Carlo simulation with respect to pricing accuracy and computational performance.
+	
+	\section{Fundamentals of Option Pricing}
+	
+	Before introducing specific option pricing models, some basic concepts of financial derivatives and option pricing need to be established. The following sections introduce the concept of a fair price, the basic characteristics of European options, and the parameters used to describe their prices.
+	
+	\subsection{The concept of a fair price}
+	
+	Before considering mathematical models for option pricing, it is useful to establish what is meant by a fair price. For an investment with a certain future payment, the value today is determined not only by the amount that will be received, but also by the time until the payment is made. For example, receiving CHF 100 today is generally more valuable than receiving CHF 100 one year from now, since the money received today could be invested and earn interest.\\
+	The situation becomes more complicated when the future payment is uncertain. Consider a simple game involving a fair coin. Suppose a player pays an initial amount to participate in a game in which they receive CHF 5 if the coin lands on heads and have to pay CHF 4 if it lands on tails. The payoff of the game is therefore
+	
+	\[
+	X = \begin{cases}
+	5, & \text{if the coin lands on heads}, \\
+	-4, & \text{if the coin lands on tails}.
+	\end{cases}
+	\]
+	
+	Since both outcomes are equally likely, the expected payoff of the game is 
+	
+	\[
+	\mathbb{E}[X] = \frac{1}{2}\cdot 5 + \frac{1}{2}\cdot(-4) = 0.5.
+	\]
+	
+	The expected payoff is therefore CHF 0.50. However, this does not necessarily mean that every person would be willing to pay CHF 0.50 to participate in the game. The outcome is uncertain, and individuals may value a certain payment differently from a risky payment with the same expected value. This illustrates that the expected payoff alone is not sufficient to determine the current value of an uncertain financial claim.\\
+	In financial markets, the valuation of uncertain future payments is closely related to the principle of no arbitrage. Arbitrage refers to the possibility of generating a risk-free profit without making a corresponding investment. If two financial positions produce exactly the same future cash flows under all possible circumstances, they should therefore have the same price. Otherwise, an investor could buy the cheaper position and sell the more expensive one, generating a risk-free profit. This principle provides an important foundation for mathematical option pricing.\\
+	An option represents a particularly interesting example of an uncertain future payoff. Its value depends on the future price of an underlying asset and is therefore unknown at the time the option is purchased. The task of option pricing is to determine the value of this future payoff at an earlier point in time while taking into account both uncertainty and the time value of money.
+	
+	\subsection{European call and put options}
+	
+	An option is a financial derivative whose value depends on an underlying asset, such as a stock. It gives its holder the right, but not the obligation, to buy or sell the underlying asset at a predetermined price under specified conditions. The price paid to acquire an option is called the option premium, while the predetermined price at which the underlying asset can be bought or sold is known as the strike price.\\
+	A call option gives its holder the right to buy the underlying asset at the strike price. A put option, in contrast, gives its holder the right to sell the underlying asset at the strike price. Both types of options can be used to benefit from certain price movements or to manage financial risk.\\
+	Options can also be classified according to when they may be exercised. A European option can only be exercised at any time up to and including maturity. The maturity date is the date on which the option expires.\\
+	In this thesis, the focus is on vanilla European call options. the term "vanilla" refers to a standard option with relatively simple contractual conditions. To understand how such an option is valued, it is first necessary to consider its payoff at maturity. \\
+	Let $S_T$ denote the price of the underlying asset at maturity and $K$ the strike price. The payoff of a European call option is
+	
+	\[
+	C_T = \max(S_T - K, 0).
+	\]
+	
+	It the underlying asset's price at maturity exceeds the strike price, the holder can buy the asset for less than its market value, resulting in a positive payoff. If the price is equal to or below the strike price, the holder can choose not to exercise the option, resulting in a payoff of zero.\\
+	Similarly, the payoff of a European put option is 
+	
+	\[
+	C_T = \max(K - S_T, 0).
+	\]
+	
+	A put option has a positive payoff when the underlying asset's price at maturity is below the strike price, since the holder has the right to sell the asset for more than its market value. If the price is equal to or above the strike price, the payoff is zero. \\
+	It is important to distinguish between the payoff at maturity and the option's price before maturity. The payoff depends on the underlying asset's price at maturity, whereas the option price represents the value of the contract at an earlier point in time. Determining this price is the central problem addressed by the option pricing models discussed in this thesis.
+	
+	\subsection{Basic option pricing parameters}
+	
+	The price of an option depends on several factors describing both the option contract and the underlying asset. These parameters determine the possible payoffs at maturity and influence the value assigned to them before maturity. Understanding their meaning is therefore essential before introducing mathematical option pricing models.\\
+	The current price of the underlying asset, denoted by \(S_0\), is one of the most important parameters. For a call option, a higher current asset price generally increases the option's value. The strike price \(K\) specifies the price at which the underlying asset can be bought or sold. For a call option, a higher strike price generally decreases its value, as the holder must pay more to acquire the underlying asset.\\
+	The time to maturity, denoted by \(T\), describes the remaining time until the option expires and is usually expressed in years. A longer time to maturity generally increases the value of a vanilla option, since the underlying asset has more time to undergo favourable price movements. The risk-free interest rate \(r\) also affects option prices because future payments are valued relative to their value today. The continuous dividend yield, denoted by \(d\), represents the rate at which the underlying asset pays dividends, expressed as a continuously compounded annual yield. Finally, the volatility \(\sigma\) measures the variability of the underlying asset's returns. Higher volatility generally increases the value of both European call and put options, since it increases the range of possible future prices and therefore the potential payoffs. \\
+	The main parameters used in the option pricing models considered in this thesis are summarized in Table~\ref{tab:option_parameters}.
+	
+	\begin{table}[H]
+		\centering
+		\begin{tabular}{c l p{8cm}}
+			\toprule
+			Symbol & Parameter & Description \\
+			\midrule
+			\(S_0\) & Current asset price & The market price of the underlying asset at the valuation time. \\
+			\(K\) & Strike price & The predetermined price at which the underlying asset can be bought or sold. \\
+			\(T\) & Time to maturity & The time remaining until the option expires, expressed in years. \\
+			\(r\) & Risk-free interest rate & The risk-free interest rate used in the pricing model. \\
+			\(d\) & Dividend yield & The continuous dividend yield of the underlying asset. \\
+			\(\sigma\) & Volatility & A measure of the variability of the underlying asset's returns.\\
+			\bottomrule
+		\end{tabular}
+		\caption{Basic parameters used in option pricing.}
+		\label{tab:option_parameters}
+	\end{table}
+	
+	These parameters form the basis of the Black-Scholes model. The Merton Jump Diffusion model extends this framework by introducing additional parameters that describe the occurrence and magnitude of sudden price movements, known as jumps. These additional parameters are introduced in the corresponding chapter.
+	
+	\section{The Black-Scholes model}
+	
+	The Black-Scholes model is one of the fundamental models in mathematical finance. Developed by Fischer Black, Myron Scholes, and Robert Merton, it provides a theoretical framework for determining the price of European options. Its central idea is that an option can be priced by constructing a portfolio of the underlying asset and the option itself whose exposure to changes in the asset price is eliminated. Under the model's assumption, this leads to a partial differential equation whose solution gives the option price. \\
+	The model is particularly relevant to this thesis because it illustrates how a mathematical model can produce an option price from a small number of parameters. It also provides a useful starting point for the Merton Jump Diffusion model.
+	
+	\subsection{Assumptions}
+	
+	The Black-Scholes model relies on a number of simplifying assumptions. These assumptions make it possible to derive a mathematical pricing formula, but they also limit how accurately the model can represent real financial markets (Joshi, Sections 2.4 and 5.7).\\
+	First, the market is assumed to be frictionless. Investors can buy and sell assets without transaction costs, and their trades do not affect the market prices. Assets are assumed to ge sufficiently liquid to allow investors to trade whenever necessary. Furthermore, investors can sell assets short and trade fractional quantities of them.\\
+	Second, the model assumes that the risk-free interest rate $r$ and the volatility $\sigma$ of the underlying asset are constant over the lifetime of the option. The interest rate is continuously compounded, meaning that an amount of money grows exponentially over time. An initial amount $B_0$ invested at the risk-free rate therefore becomes
+	
+	\[
+	B_T = B_0 e^{rT}
+	\]
+	after a period of $T$ years.
+	
+	Third, the underlying asset follows a geometric Brownian motion. Its price evolves continuously, and its logarithmic returns are normally distributed over a fixed time interval. Consequently, the asset price itself follows a log-normal distribution and remains positive.\\
+	Finally, the option considered in this thesis is a European call option. It can only be exercised at maturity, and its payoff depends on the difference between the asset price and the strike price at that time. The model also permits a constant continuous dividend yield $d$, which represents the dividends paid by the underlying asset relative to its price. \\
+	These assumptions do not describe every feature of real financial markets. In particular, actual volatility and interest rates can change over time, while market prices may exhibit sudden movements, that are not adequately represented by continuous price dynamics. Nevertheless, the assumptions provide a useful framework for deriving a theoretical option price (Joshi, Sections 2.4, 3.7, and 5.7).
+	
+	\subsection{Underlying asset dynamics}
+	
+	Let $S_t$ denote the price of the underlying asset at time $t$. in the Black-Scholes model, the asset price is described by a geometric Brownian motion. This stochastic prices combines a deterministic component, representing the general direction of the price movement, with a random component, representing market uncertainty. \\
+	The prices can be written as the stochastic differential equation
+	
+	\[
+	dS_t = \mu S_t\,dt + \sigma S_t\,dw, 
+	\]	
+	
+	where $\mu$ is the drift of the asset, $\sigma$ is its volatility, and $W_t$ denotes a standard Brownian motion. the drift describes the expected instantaneous rate of return in the real-world model, while volatility determines the magnitude of random price fluctuations.\\
+	A standard Brownian motion is a continuous stochastic prices whose increments over non-overlapping time intervals are independent and normally distributed. In particular, 
+	
+	\[
+	W_{t+\Delta t}-W_t \sim \mathcal{N}(0, \Delta t).
+	\]
+	
+	The random component of the asset price therefore becomes more variable over linger time intervals. \\
+	the geometric Brownian motion model can also be expressed in terms of the logarithm of the asset price. Applying It\^o's lemma gives 
+	
+	\[
+	d\ln S_t = \left(\mu-\frac{1}{2}\sigma^2\right)dt + \sigma\,dW_t.
+	\]
+	
+	Integrating this expression from time $0$ to time $T$ yields
+	
+	\[
+	S_T = S_0 \exp\left[\left(\mu-\frac{1}{2}\sigma^2\right)T+\sigma W_T\right].
+	\]
+	
+	Since $W_T$ is normally distributed with mean $0$ and variance $T$, the logarithm of $S_T$ is normally distributed. Thus, the future asset price $S_T$ follows a log -normal distribution (Joshi, Sections 3.7 and 5.2)\\
+	For option pricing, however, the real-world drift $\mu$ does not appear in the final Black-Scholes formula. Instead, the model uses the principle of risk-neutral valuation. Under a risk-neutral probability measure, the expected return of the underlying asset, including dividends, is equal to the risk-free rate. The corresponding asset price dynamics are
+	
+	\[
+	dS_t = (r-d)S_t\,dt+\sigma S_t\,dW_t^{\mathbb{Q}},
+	\]
+	
+	where $W_t^{\mathbb{Q}}$ is a Brownian motion under the risk-neutral probability measure $\mathbb{Q}$.\\
+	The parameter $d$ represents the continuous dividend yield. When the asset does not pay dividends, $d=0$, and the risk-neutral drift reduces to $r$. The risk-neutral measure is a mathematical pricing framework. It does not imply that real world investors are indifferent to risk. Rather, it allows derivative prices to be calculated as discounted expected payoffs under an appropriate probability measure (Joshi, Sections 3.7 and 6.3.)
+	
+	\subsection{Derivation of the Black-Scholes equation}
+	
+	The Black-Scholes equation can be derived by constructing a portfolio that eliminates the uncertainty arising from random movements in the underlying asset price. This approach is known as delta hedging. The following derivation first considers a non-dividend-paying asset, as in Joshi's informal derivation, beofre introducing the adjustment for a continuous dividend yield (Joshi, Sections 5.7 and 5.10).\\
+	Let $C(S, t)$ denote the price of a European call option at time $t$, where $S$ is the current price of the underlying asset. The option price depends on both variables because the remaining time to maturity and the current asset price affect its value. \\
+	Suppose that the underlying asset follows the geometric Brownian motion
+	
+	\[
+	dS = \mu S\,dt +\sigma S\,dW_t.
+	\]
+	
+	Since the option price is a function of $S$ and $t$, It\^o's lemma gives
+	
+	\[
+	dC = \frac{\partial C}{\partial t}\,dt + \frac{\partial C}{\partial S}\,dS + \frac{1}{2}\frac{\partial^2 C}{\partial S^2}(dS)^2.
+	\]
+	
+	Substituting the expression for $dS$ and using the stochastic calculus identity $(dW_t)^2=dt$ yields
+	
+	\[
+	\begin{aligned}
+		dC ={}&
+		\left(
+		\frac{\partial C}{\partial t}
+		+\mu S\frac{\partial C}{\partial S}
+		+\frac{1}{2}\sigma^2 S^2
+		\frac{\partial^2 C}{\partial S^2}
+		\right)dt\\
+		&+\sigma S\frac{\partial C}{\partial S}\,dW_t.
+	\end{aligned}
+	\]
+	
+	The expression contains a random term proportional to $dW_t$. To eliminate this uncertainty, consider a portfolio consisting of one call option and a short position in $\Delta$ units of the underlying asset. Its value is
+	
+	\[
+	\Pi=C-\Delta S.
+	\]
+	Over a short time interval, its change in value is
+	\[
+	d\Pi=dC-\Delta\,dS.
+	\]
+	Choose
+	\[
+	\Delta=\frac{\partial C}{\partial S}.
+	\]
+	With this choice, the random terms in $d\Pi$ cancel. The resulting portfolio is locally risk-free, and its change in value is
+	\[
+	d\Pi =
+	\left(
+	\frac{\partial C}{\partial t}
+	+\frac{1}{2}\sigma^2S^2
+	\frac{\partial^2 C}{\partial S^2}
+	\right)dt.
+	\]
+	
+	Because the portfolio is locally risk-free, the absence of arbitrage requires it to earn the risk-free interest rate. Therefore, 
+	
+	\[
+	d\Pi=r\Pi\,dt.
+	\]
+	
+	Substituting $\Pi=C-S\frac{\partial C}{\partial S}$ gives
+	\[
+	\left(
+	\frac{\partial C}{\partial t}
+	+\frac{1}{2}\sigma^2S^2
+	\frac{\partial^2 C}{\partial S^2}
+	\right)dt
+	=
+	r\left(
+	C-S\frac{\partial C}{\partial S}
+	\right)dt.
+	\]
+	Rearranging and dividing by $dt$ yields the Black-Scholes equation for a non-dividend-paying asset:
+	\[
+	\boxed{
+		\frac{\partial C}{\partial t}
+		+\frac{1}{2}\sigma^2S^2
+		\frac{\partial^2 C}{\partial S^2}
+		+rS\frac{\partial C}{\partial S}
+		-rC=0.
+	}
+	\]
+	
+	For an asset with a constant continuous dividend yield $d$, the equation is modified to account for the dividends generated by holding the underlying asset. the resulting Black-Scholes equation is
+	
+	\[
+	\boxed{
+		\frac{\partial C}{\partial t}
+		+\frac{1}{2}\sigma^2S^2
+		\frac{\partial^2 C}{\partial S^2}
+		+(r-d)S\frac{\partial C}{\partial S}
+		-rC=0.
+	}
+	\]
+	
+	This equation describes the option price before maturity. To determine a unique solution for a European call option, it must be supplemented with its payoff at maturity:
+	
+	\[
+	C(S, T)=\max(S-K, 0),
+	\]
+	
+	where $K$ is the strike price. At maturity, the holder exercises the option if the asset price exceeds the strike price. Otherwise, the option expires without value (Joshi, Sections 5.7 and 5.10).
+	
+	\subsection{The Black-Scholes formula}
+	
+	the Black-Scholes equation can be solved analytically for a European call option. the resulting expression is known as the Black-Scholes formula. It gives the theoretical option price in terms of the current asset price, strike price, time to maturity, risk-free interest rate, volatility, and, if applicable, the continuous dividend yield.\\
+	Let $S$ be the current asset price, $K$ the strike price, $T$ the time to maturity, $r$ the continuously compounded risk-free interest rate, $\sigma$ the volatility, and $d$ the continuous dividend yield. the Black-Scholes price of a European call option is
+	
+	\[
+	\boxed{
+		C(S_0,K,T,r,\sigma,d)
+		=
+		S_0e^{-dT}N(d_1)
+		-Ke^{-rT}N(d_2),
+	}
+	\]
+	
+	where
+	
+	\[
+	d_1=
+	\frac{
+		\ln\left(\frac{S_0}{K}\right)
+		+\left(r-d+\frac{1}{2}\sigma^2\right)T
+	}{
+		\sigma\sqrt{T}
+	}
+	\]
+	
+	and
+	
+	\[
+	d_2=d_1-\sigma\sqrt{T}.
+	\]
+	
+	Here, $N(x)$ denotes the cumulative distribution function of the standard normal distribution:
+	
+	\[
+	N(x)=\frac{1}{\sqrt{2\pi}}
+	\int_{-\infty}^{x}e^{-u^2/2}\,du.
+	\]
+	
+	The formula can be interpreted as the difference between two discounted expected values under the risk-neutral probability measure. the term $S_0e^{-rT}N(d_2)$ represents the discounted strike-price contribution.\\
+	If the underlying asset does not pay dividends, then $d = 0$. The formula simplifies to the standard Black-Scholes formula:
+	
+	\[
+	\boxed{
+		C(S_0,K,T,r,\sigma)
+		=
+		S_0N(d_1)-Ke^{-rT}N(d_2),
+	}
+	\]
+	with
+	\[
+	d_1=
+	\frac{
+		\ln\left(\frac{S_0}{K}\right)
+		+\left(r+\frac{1}{2}\sigma^2\right)T
+	}{
+		\sigma\sqrt{T}
+	},
+	\qquad
+	d_2=d_1-\sigma\sqrt{T}.
+	\]
+	
+	The Black-Scholes formula provides a direct way to calculate the theoretical price of a European call option without simulating possible future asset-price paths. However, its analytical simplicity relies on the assumptions introduced earlier, particularly the assumption that the underlying asset follows a geometric Brownian motion with constant volatility. \\
+	In real financial markets, asset prices can experience sudden jumps in response to unexpected events. Such movements are not explicitly represented by the Black-Scholes model. This limitation motivates the consideration of more flexible models.
+	
+	\section{The Merton Jump Diffusion model}
+	
+	The Merton Jump Diffusion model extends the Black-Scholes framework to account for discontinuous changes in asset prices. This chapter introduces the motivation for this extension, describes the resulting asset price dynamics, and explains how European options can be price under the model. 
+	
+	\subsection{Motivation and extension of Black-Scholes}
+	
+	One indication that the Black-Scholes model does not fully capture observed market behaviour is the volatility smile. If implied volatilities are calculated from market prices of options with the same underlying asset and expiration date, they generally vary with the strike price, rather than remaining constant as predicted by the Black-Scholes model. For equity options, this pattern often takes the form of a downward-sloping volatility skew \cite{joshi}\\.
+	One possible explanation is that asset prices are more likely to experience large movements than a model based on continuous price dynamics would suggest. In particular, sudden downward movements can occur during market crashes. the Merton Jump Diffusion model addresses this limitation by combining continuous price fluctuations with random jumps, allowing the model to represent both ordinary market movements and sudden changes in asset price \cite{joshi}\\.
+	This extension also affects the theoretical foundations of option pricing. In the Black-Scholes framework, continuous adjustment of a hedging portfolio allows an option to be replicated under the model's assumptions. When jumps are introduced, the underlying asset alone generally cannot provide a perfect hedge against both small continuous movements and sudden jumps. The resulting market is therefore incomplete, meaning that no-arbitrage arguments alone do not necessarily determine a unique option price. Additional assumptions are required to specify the pricing model \cite{joshi}.
+	
+	\subsection{Asset price dynamics with Jumps}
+	
+	\paragraph{The timing of jumps.}
+	
+	To describe the timing of jumps mathematically, the Merton model uses a Poisson process. Let $N_t$ denote the number of jumps that have occurred between time $0$ and time $t$. The process remains constant between jump events and increases by one whenever a new jump occurs.\\
+	The frequency of jumpy is governed by the intensity parameter $\lambda$, which represents the expected number of jumps per unit of time. For example, if time is measured in years, $\lambda = 2$ corresponds to an expected two jumps per year. This does not mean that exactly two jumps occur in every year; rather, the actual number is random. Increasing $\lambda$ makes jumps occur more frequently on average, but does not affect their size. \\
+	For a sufficiently short time interval of length $\Delta$, the probability of one jump is approximately $\lambda\Delta t$. the probability of multiple jumps within such a short interval is negligible to first order. Over a time interval of length $T$, the total number of jumps follows a Poisson distribution:
+	
+	\[
+	\mathbb{P}(N_T = n) = \frac{(\lambda T)^n}{n!}e^{-\lambda T}, \qquad n=0,1,2,\ldots
+	\] 
+	
+	This distribution assigns a probability to each possible number of jumps during the interval. For example, it allows for the possibility that no jumps occur before an option expires, as well as the possibility of several jumps. Intuitively, the Poisson process behaves like a clock that rings at random times, with $\lambda$ determining its average ringing frequency \cite{joshi}.
+	
+	\paragraph{The size of jumps.}
+	
+	While the Poisson process determines when jumps occur, a separate random variable determines their size. Let $J_i$ denote the multiplicative factor associated with the $i$-th jump. If the asset price immediately before a jump at time $t_i$ is $S_{t_i-}$, the price immediately afterwards is
+	
+	\[
+	S_{t_i}=J_iS_{t-i-}.
+	\]
+	
+	The multiplicative factor describes the change relative to the price before the jump. For example, if $J_i=0.9$, the asset price decreases by $10\%$, whereas $J_i = 1.15$ corresponds to an increase of $15\%$. The same factor therefore describes the same percentage change regardless of the asset's initial price. \\
+	In the Merton model, the jump factors are assumed to follow a lognormal distribution. Equivalently, their logarithms are normally distributed:
+	
+	\[
+	\ln J_i \sim\mathcal{N}(\mu_J,\sigma_J^2).
+	\]
+	
+	Here, $\mu_J$ is the mean of the logarithmic jump factor, and $\sigma_J$ determines the variability of these logarithmic factors. The lognormal distribution ensures that $J_i$ is positive, allowing the jump to increase or decrease the asset price without making it negative. Each jump is assigned a new random factor from the same distribution \cite{joshi}.
+	
+	\paragraph{Combining the two components.}
+	
+	The timing and size of jumps can now be incorporated into the continuous asset price process. The resulting jump-diffusion process is described by the stochastic differential equation
+	
+	\[
+	dS_t = \mu S_{t-}\,dt + \sigma S_{t-}\,dW_t + S_{t-}(J-1)\,dN_t.
+	\]
+	
+	Here, $S_{t-}$ denotes the asset price immediately before time $t$, and $W_t$ is the Brownian motion introduced in the Black-Scholes chapter. The parameter $\sigma$ determines the volatility of the continuous component, while $\mu$ describes its drift. The counting process $N_t$ determines when jumps occur, and $J$ denotes the random multiplicative factor associated with a jump. The Brownian motion, the Poisson process, and the jump factors are also assumed to remain constant over time.\\
+	The equation can be understood by considering what happens during a short time interval. If no jumps occur, then $dN_t=0$, and the final term vanishes. The asset price therefore evolves according to the continuous component. If a jump occurs, then $dN_t=1$, and the final term contributes $S_{t-}(J-1)$. Adding this change to the price immediately before the jump gives
+	
+	\[
+	S_t = S_{t-}+S_{t-}(J-1) = JS_{t-}.
+	\]
+	
+	
+	Thus, the same equation describes both the continuous evolution between jumps and the discrete change at a jump time. It combines two distinct sources of randomness: the Brownian motion governs the continuous fluctuations, while the Poisson prices and the jump factors govern the occurrence and magnitude of discontinuities.\\
+	An important consistency check is obtained by setting $\lambda=0$. In this case, no jumps occur, and the model reduces to the geometric Brownian motion used in the Black-Scholes framework.\\
+	The drift parameter $\mu$ will require an adjustment when the model is used for option pricing. Under risk-neutral valuation, the expected contribution of jumps must be taken into account when specifying the drift of the continuous component. This adjustment is derived in the following subsection.
+	
+	\subsection{Option pricing under the Merton model}
+	
+	Under the risk-neutral measure, the price of a European call option is given by the discounted expected payoff at maturity. For an option with strike price $K$ and maturity $T$, this can be written as
+	
+	\[
+	C_0
+	=
+	e^{-rT}
+	\mathbb{E}^{\mathbb{Q}}
+	\left[(S_T-K)^+\right],
+	\]
+	
+	where $S_T$ is the underlying asset price at maturity, $r$ is the risk-free interest rate and $(x)^+ = \max(x, 0)$. The expectation is taken under the chosen risk-neutral measure $\mathbb{Q}$.\\
+	Unlike the Black-Scholes model, the terminal asset price in the Merton model depends on both the continuous diffusion and the random jumps. However, when the number of jumps during the option's lifetime is fixed, the distribution of the logarithm of the terminal asset price is normal. This property makes it possible to express the Merton option price in terms of Black-Scholes prices. 
+	
+	\paragraph{Lognormal jump sizes.}
+	
+	In the Merton model, the multiplicative jump factor $J$ is assumed to be lognoramlly distributed. Equivalently, its logarithm follows a normal distribution:
+	
+	\[
+	\ln J \sim
+	\mathcal{N}(\mu_J,\sigma_J^2).
+	\]
+	
+	the expected jump factor is therefore
+	
+	\[
+	m=\mathbb{E}[J]
+	=e^{\mu_J+\frac{1}{2}\sigma_J^2}.
+	\]
+	
+	the parameter $m$ describes the expected multiplicative effect of a jump, while $\sigma$ determines the variability of the logarithmic jump sizes.
+	
+	\paragraph{Conditional Black-Scholes prices.}
+	
+	Suppose that exactly $n$ jumps occur before maturity. The logarithm of the terminal asset price then contains the sum of $n$ noramlly distributed logarithmic juimp sizes, in addition to the continuous Brownian compnent. Since independent normal random variables add to another normal random variable, the terminal distribution remains lognormal when the number of jumps is fixed.\\
+	Consequently, the option can be price using the Black-Scholes formula with adjusted parameters. Define 
+	
+	\[
+		\sigma_n = \sqrt{\sigma^2+\frac{n\sigma_J^2}{T}}
+	\]
+	
+	and 
+	
+	\[
+		r_n = r-\lambda(m-1)+\frac{n\ln(m)}{T}.
+	\]
+	
+	Here, $\sigma_J$ is the effective volatility conditional on the jump count, and $r_n$ is an adjusted interest rate that accounts for the expected effect of jumps and the conditional distribution of the terminal asset price. These parameters allow the conditional option price to be expressed as
+	
+	\[
+	C_{\mathrm{BS}}
+	(S_0,K,T,r_n,\sigma_n),
+	\]
+	
+	where $C_{\mathrm{BS}}$ denotes the standard Black-Scholes call pricing formula.
+	
+	\paragraph{The Merton pricing formula.}
+	
+	The number of jumps is itself random. Therefore, the final option price must account for the different possible jump counts. For lognormally distributed jump sizes, the conditional Black-Scholes price can be combined into the following infinite series:
+	
+	\[
+	C_{\mathrm{MJD}}
+	=
+	\sum_{n=0}^{\infty}
+	e^{-\lambda'T}
+	\frac{(\lambda'T)^n}{n!}
+	C_{\mathrm{BS}}
+	(S_0,K,T,r_n,\sigma_n),
+	\]
+	
+	where
+	
+	\[
+	\lambda'=\lambda m.
+	\]
+	
+	The coefficient
+	
+	\[
+	e^{-\lambda'T}
+	\frac{(\lambda'T)^n}{n!}
+	\]
+	
+	is the Poisson probability weight associated with $n$ in this representation. Each term therefore contributes a Black-Scholes price with adjusted parameters, weighted according to the corresponding Poisson distribution.\\
+	The formula provides a semi-analytical solution to European call option pricing under the Merton model. Although the series contains infinitely many terms, it can be approximated numerically by summing only a finite number of them. the omitted terms become negligible once the remaining Poisson probability mass is sufficiently small. \\
+	This formula is particularly useful as a reference for evaluating numerical pricing methods. In this study, it provides a theoretical benchmark against which the Monte Carlo simulation and the artificial neural network can be compared.
+	
+\end{document}
