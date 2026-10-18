@@ -134,4 +134,4 @@ This project was developed for educational and research purposes.
 
 Matura Thesis — 2026
 
-![alt text](image.png)
+<img width="279" height="259" alt="grafik" src="https://github.com/user-attachments/assets/2faa4544-9d01-4fa0-ab4c-5f659391ef95" />
